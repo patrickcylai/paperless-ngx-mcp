@@ -1,4 +1,9 @@
 {
     "extends": "./tsconfig.json",
+    "compilerOptions": {
+        // Emit dist/index.js rather than dist/src/index.js, so the published
+        // package has a clean layout and a short `bin` path.
+        "rootDir": "src"
+    },
     "include": ["src/**/*.ts"]
 }

@@ -21,20 +21,27 @@ returns bare ids on every document. That is awkward for a model. So this server:
 - **truncates** document text and raw responses by default, so one call cannot swamp the context;
 - requires an explicit **`confirm: true`** on anything destructive.
 
+## Two ways to run it
+
+MCP has two transports, and which one you want depends on how the client reaches the server:
+
+- **stdio** (default) — the client spawns the server as a subprocess and talks over stdin/stdout.
+  This is what Claude Code and Claude Desktop do, and what you want in almost all cases.
+- **http** — one long-lived server listening on a port, which several clients can connect to.
+
+Set `MCP_TRANSPORT=stdio` or `MCP_TRANSPORT=http`.
+
 ## Setup
 
-```bash
-npm install
-npm run build
-```
+First get an API token from the paperless web UI: user menu → **My Profile** → the circular arrow
+next to *API Token*.
 
-Get an API token from the paperless web UI: user menu → **My Profile** → the circular arrow next to
-*API Token*.
+Nothing to clone or build — `npx` fetches the package on demand.
 
 ### Claude Code
 
 ```bash
-claude mcp add paperless -e PAPERLESS_URL=https://paperless.example.com -e PAPERLESS_TOKEN=your-token -- node /absolute/path/to/paperless-ngx_mcp/dist/src/index.js
+claude mcp add paperless -e PAPERLESS_URL=https://paperless.example.com -e PAPERLESS_TOKEN=your-token -- npx -y @patrickcylai/paperless-ngx-mcp
 ```
 
 ### Claude Desktop / other MCP clients
@@ -45,8 +52,8 @@ Add to the client's MCP config (`claude_desktop_config.json` for Claude Desktop)
 {
     "mcpServers": {
         "paperless": {
-            "command": "node",
-            "args": ["/absolute/path/to/paperless-ngx_mcp/dist/src/index.js"],
+            "command": "npx",
+            "args": ["-y", "@patrickcylai/paperless-ngx-mcp"],
             "env": {
                 "PAPERLESS_URL": "https://paperless.example.com",
                 "PAPERLESS_TOKEN": "your-token"
@@ -55,6 +62,50 @@ Add to the client's MCP config (`claude_desktop_config.json` for Claude Desktop)
     }
 }
 ```
+
+### From source
+
+```bash
+npm install
+npm run build
+```
+
+Then point the client at `node /absolute/path/to/paperless-ngx_mcp/dist/index.js` instead of the
+`npx` command above.
+
+## Running as an HTTP service
+
+Only needed if you want one long-lived server rather than a per-client subprocess:
+
+```bash
+MCP_TRANSPORT=http PAPERLESS_URL=https://paperless.example.com PAPERLESS_TOKEN=your-token npx -y @patrickcylai/paperless-ngx-mcp
+```
+
+It listens on `127.0.0.1:8765`, with the MCP endpoint at `/mcp` and a liveness probe at `/healthz`:
+
+```bash
+curl -s http://127.0.0.1:8765/healthz
+```
+
+Point an HTTP-capable client at it:
+
+```bash
+claude mcp add --transport http paperless http://127.0.0.1:8765/mcp
+```
+
+### If you expose the port
+
+It binds loopback only by default. Before binding anything wider, set a bearer token — otherwise
+anyone who can reach the port can read and modify your archive. The server warns on stderr when it
+binds a non-loopback address without one.
+
+```bash
+openssl rand -hex 32
+```
+
+Set that as `MCP_AUTH_TOKEN`, and add `MCP_ALLOWED_HOSTS` for the hostname you'll use — `Host` and
+`Origin` are checked against a localhost-only allowlist by default, which blocks DNS rebinding.
+Clients then need to send `Authorization: Bearer <token>`. `/healthz` stays unauthenticated.
 
 ## Configuration
 
@@ -69,6 +120,18 @@ Add to the client's MCP config (`claude_desktop_config.json` for Claude Desktop)
 | `PAPERLESS_TIMEOUT_MS` | no | `30000` | Per-request timeout. |
 
 \* One of the two credential forms is required.
+
+Transport settings (the HTTP ones are ignored under stdio):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `http`. |
+| `MCP_HTTP_HOST` | `127.0.0.1` | Interface to bind. Set a bearer token before widening this. |
+| `MCP_HTTP_PORT` | `8765` | Port to listen on. |
+| `MCP_HTTP_PATH` | `/mcp` | Path the MCP endpoint is mounted at. |
+| `MCP_AUTH_TOKEN` | — | When set, requests must send `Authorization: Bearer <token>`. `/healthz` stays open. |
+| `MCP_ALLOWED_HOSTS` | localhost | Comma-separated `Host` allowlist (DNS-rebinding protection). `*` disables the check. |
+| `MCP_ALLOWED_ORIGINS` | localhost | Comma-separated `Origin` allowlist. `*` disables the check. |
 
 Start with `PAPERLESS_READ_ONLY=1` if you want to let an assistant explore the archive before giving
 it permission to change anything.
@@ -156,8 +219,8 @@ npm run build      # emit dist/
 ```
 
 The end-to-end suite starts a stub HTTP server that mimics the paperless API and drives the real
-server over stdio with raw JSON-RPC, so it covers the wire protocol, query translation, multipart
-uploads, error handling and read-only enforcement.
+server over both transports with raw JSON-RPC, so it covers the wire protocol, query translation,
+multipart uploads, error handling, read-only enforcement, bearer auth and the DNS-rebinding checks.
 
 Anything not covered by a dedicated tool is reachable through `paperless_api_request`. Your own
 instance publishes its full, version-matched schema at `<paperless-url>/api/schema/view/`.

@@ -1,33 +1,53 @@
 {
-    "name": "paperless-ngx-mcp",
+    "name": "@patrickcylai/paperless-ngx-mcp",
     "version": "0.1.0",
     "description": "Model Context Protocol server for paperless-ngx — search, read, file and upload documents in your archive.",
-    "keywords": ["mcp", "modelcontextprotocol", "paperless-ngx", "paperless", "documents", "dms"],
+    "keywords": [
+        "mcp",
+        "modelcontextprotocol",
+        "model-context-protocol",
+        "paperless-ngx",
+        "paperless",
+        "documents",
+        "dms",
+        "ocr"
+    ],
     "license": "MIT",
+    "author": "Patrick Lai",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/patrickcylai/paperless-ngx_mcp.git"
+    },
+    "homepage": "https://github.com/patrickcylai/paperless-ngx_mcp#readme",
+    "bugs": "https://github.com/patrickcylai/paperless-ngx_mcp/issues",
     "type": "module",
     "bin": {
-        "paperless-ngx-mcp": "dist/src/index.js"
+        "paperless-ngx-mcp": "dist/index.js"
     },
-    "main": "dist/src/index.js",
-    "files": ["dist/src", "README.md"],
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": ["dist", "README.md", "LICENSE"],
+    "publishConfig": {
+        "access": "public"
+    },
     "engines": {
         "node": ">=22.6.0"
     },
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
         "watch": "tsc -p tsconfig.build.json --watch",
-        "start": "node dist/src/index.js",
+        "start": "node dist/index.js",
         "dev": "node src/index.ts",
         "typecheck": "tsc --noEmit",
         "test": "node --test 'test/*.test.ts'",
-        "prepublishOnly": "npm run build"
+        "prepublishOnly": "npm run typecheck && npm test && npm run build"
     },
     "dependencies": {
         "@modelcontextprotocol/server": "^2.0.0",
         "zod": "^4.4.3"
     },
     "devDependencies": {
-        "@types/node": "^24.0.0",
-        "typescript": "^5.9.0"
+        "@types/node": "^26.2.0",
+        "typescript": "^5.9.3"
     }
 }

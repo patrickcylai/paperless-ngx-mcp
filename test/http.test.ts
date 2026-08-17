@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import http from 'node:http';
 import test, { after, before, describe } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -30,9 +30,42 @@ async function startStubPaperless(): Promise<{ url: string; stop: () => Promise<
 }
 
 interface Started {
-    child: ChildProcessWithoutNullStreams;
+    child: ChildProcess;
     baseUrl: string;
     stderr: () => string;
+}
+
+/**
+ * `fetch` refuses to set a `Host` or `Origin` header, so the rebinding checks
+ * have to be exercised through the raw client.
+ */
+function rawPost(
+    baseUrl: string,
+    headers: Record<string, string>,
+    body: unknown,
+): Promise<{ status: number; body: string }> {
+    const url = new URL(baseUrl);
+    return new Promise((resolve, reject) => {
+        const request = http.request(
+            {
+                hostname: url.hostname,
+                port: url.port,
+                path: '/mcp',
+                method: 'POST',
+                headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers },
+            },
+            (response) => {
+                let received = '';
+                response.setEncoding('utf8');
+                response.on('data', (chunk: string) => {
+                    received += chunk;
+                });
+                response.on('end', () => resolve({ status: response.statusCode ?? 0, body: received }));
+            },
+        );
+        request.on('error', reject);
+        request.end(JSON.stringify(body));
+    });
 }
 
 /** Boots the server in HTTP mode and waits for the line that reports its port. */
@@ -149,20 +182,24 @@ describe('HTTP transport', () => {
     test('an unknown path is refused with a pointer to the right one', async () => {
         const response = await fetch(`${server.baseUrl}/`);
         assert.equal(response.status, 404);
-        assert.match((await response.json()).error, /POST to \/mcp/);
+        const payload = (await response.json()) as { error: string };
+        assert.match(payload.error, /POST to \/mcp/);
     });
 
     test('a foreign Host header is rejected, blocking DNS rebinding', async () => {
-        const response = await fetch(`${server.baseUrl}/mcp`, {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                accept: 'application/json, text/event-stream',
-                host: 'evil.example.com',
-            },
-            body: JSON.stringify(INITIALIZE),
-        });
-        assert.equal(response.status, 421);
+        const rejected = await rawPost(server.baseUrl, { host: 'evil.example.com' }, INITIALIZE);
+        assert.equal(rejected.status, 403);
+        assert.match(rejected.body, /Invalid Host: evil\.example\.com/);
+
+        // A legitimate Host still gets through.
+        const allowed = await rawPost(server.baseUrl, { host: `localhost:${new URL(server.baseUrl).port}` }, INITIALIZE);
+        assert.equal(allowed.status, 200);
+    });
+
+    test('a foreign Origin is rejected', async () => {
+        const rejected = await rawPost(server.baseUrl, { origin: 'http://evil.example.com' }, INITIALIZE);
+        assert.equal(rejected.status, 403);
+        assert.match(rejected.body, /Invalid Origin: evil\.example\.com/);
     });
 });
 
