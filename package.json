@@ -1,0 +1,33 @@
+{
+    "name": "paperless-ngx-mcp",
+    "version": "0.1.0",
+    "description": "Model Context Protocol server for paperless-ngx — search, read, file and upload documents in your archive.",
+    "keywords": ["mcp", "modelcontextprotocol", "paperless-ngx", "paperless", "documents", "dms"],
+    "license": "MIT",
+    "type": "module",
+    "bin": {
+        "paperless-ngx-mcp": "dist/src/index.js"
+    },
+    "main": "dist/src/index.js",
+    "files": ["dist/src", "README.md"],
+    "engines": {
+        "node": ">=22.6.0"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "watch": "tsc -p tsconfig.build.json --watch",
+        "start": "node dist/src/index.js",
+        "dev": "node src/index.ts",
+        "typecheck": "tsc --noEmit",
+        "test": "node --test 'test/*.test.ts'",
+        "prepublishOnly": "npm run build"
+    },
+    "dependencies": {
+        "@modelcontextprotocol/server": "^2.0.0",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.0",
+        "typescript": "^5.9.0"
+    }
+}

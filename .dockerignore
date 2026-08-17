@@ -1,0 +1,14 @@
+node_modules/
+dist/
+test/
+downloads/
+.git/
+.gitignore
+.env
+.env.local
+*.tsbuildinfo
+.DS_Store
+README.md
+docker-compose.yml
+Dockerfile
+.dockerignore
