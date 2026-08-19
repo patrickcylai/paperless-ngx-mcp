@@ -432,6 +432,26 @@ describe('paperless-ngx MCP server over stdio', () => {
         assert.equal(await readFile(payload.path, 'utf8'), '%PDF-1.7 stub payload');
     });
 
+    test('download refuses a destination outside the download directory', async () => {
+        for (const destination of ['/tmp/paperless-escape.pdf', '../escaped.pdf', path.join(downloadDir, '..', 'x.pdf')]) {
+            const { text, isError } = await client.callTool('paperless_download_document', {
+                id: 42,
+                dest_path: destination,
+            });
+            assert.equal(isError, true, `${destination} should have been refused`);
+            assert.match(text, /must stay inside/);
+        }
+    });
+
+    test('download takes a relative dest_path as relative to the download directory', async () => {
+        const { text, isError } = await client.callTool('paperless_download_document', {
+            id: 42,
+            dest_path: 'sub/dir/renamed.pdf',
+        });
+        assert.equal(isError, false);
+        assert.equal(JSON.parse(text).path, path.join(downloadDir, 'sub', 'dir', 'renamed.pdf'));
+    });
+
     test('upload posts a multipart body and returns the queued task', async () => {
         const filePath = path.join(downloadDir, 'receipt.pdf');
         await writeFile(filePath, '%PDF-1.7 receipt');
@@ -475,6 +495,32 @@ describe('paperless-ngx MCP server over stdio', () => {
         assert.equal(payload.status, 'SUCCESS');
         assert.equal(payload.document_id, 99);
         assert.match(payload.result, /New document id 99/);
+    });
+
+    test('upload refuses a file outside the allowed directories', async () => {
+        const outside = path.join(os.tmpdir(), `paperless-outside-${process.pid}.pdf`);
+        await writeFile(outside, 'secret');
+
+        const { text, isError } = await client.callTool('paperless_upload_document', { file_path: outside });
+        assert.equal(isError, true);
+        assert.match(text, /may only read from/);
+
+        const posts = stub.requests.filter((request) => request.path === '/api/documents/post_document/');
+        assert.ok(
+            posts.every((request) => !request.body.includes('secret')),
+            'the refused file must never reach paperless',
+        );
+    });
+
+    test('the raw API tool cannot climb out of /api/', async () => {
+        const { text, isError } = await client.callTool('paperless_api_request', { path: '../../admin' });
+        assert.equal(isError, true);
+        assert.match(text, /may not contain a "\.\." segment/);
+
+        assert.ok(
+            stub.requests.every((request) => request.path.startsWith('/api/')),
+            'no request may have left the /api/ prefix',
+        );
     });
 
     test('upload reports a readable error for a missing file', async () => {

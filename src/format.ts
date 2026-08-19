@@ -1,4 +1,5 @@
 import { PaperlessError, ReadOnlyError } from './client.ts';
+import { PathError } from './paths.ts';
 
 /**
  * Declared as a type alias rather than an interface so it picks up the implicit
@@ -29,7 +30,7 @@ export async function handle(operation: string, run: () => Promise<ToolResult>):
     try {
         return await run();
     } catch (error) {
-        if (error instanceof ReadOnlyError || error instanceof PaperlessError) {
+        if (error instanceof ReadOnlyError || error instanceof PaperlessError || error instanceof PathError) {
             return errorResult(error.message);
         }
         const message = error instanceof Error ? error.message : String(error);

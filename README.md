@@ -114,8 +114,9 @@ Clients then need to send `Authorization: Bearer <token>`. `/healthz` stays unau
 | `PAPERLESS_URL` | yes | — | Base URL of the install. A trailing `/api` is stripped, so either form works. |
 | `PAPERLESS_TOKEN` | yes\* | — | API token. Takes precedence over username/password. |
 | `PAPERLESS_USERNAME` / `PAPERLESS_PASSWORD` | yes\* | — | Basic-auth alternative to a token. |
-| `PAPERLESS_READ_ONLY` | no | `false` | When set, every mutating tool refuses to run — no request is even sent. |
-| `PAPERLESS_DOWNLOAD_DIR` | no | `$TMPDIR/paperless-mcp` | Where `paperless_download_document` writes files. |
+| `PAPERLESS_READ_ONLY` | no | `false` | When set, every tool that would modify the archive refuses to run — no request is even sent. |
+| `PAPERLESS_DOWNLOAD_DIR` | no | `$TMPDIR/paperless-mcp` | The only directory `paperless_download_document` may write into. Created `0700`. |
+| `PAPERLESS_UPLOAD_DIRS` | no | `$PAPERLESS_DOWNLOAD_DIR` | Comma-separated list of directories `paperless_upload_document` may read from. |
 | `PAPERLESS_API_VERSION` | no | server default | Pin the API version (`Accept: …; version=N`). Leave unset unless you have a reason. |
 | `PAPERLESS_TIMEOUT_MS` | no | `30000` | Per-request timeout. |
 
@@ -134,7 +135,29 @@ Transport settings (the HTTP ones are ignored under stdio):
 | `MCP_ALLOWED_ORIGINS` | localhost | Comma-separated `Origin` allowlist. `*` disables the check. |
 
 Start with `PAPERLESS_READ_ONLY=1` if you want to let an assistant explore the archive before giving
-it permission to change anything.
+it permission to change anything. It governs the archive, not the local filesystem — downloads still
+write files, within the boundary described next.
+
+### What it can touch on your disk
+
+Two tools reach the local filesystem, and both are confined:
+
+- `paperless_download_document` writes **only** inside `PAPERLESS_DOWNLOAD_DIR`. A `dest_path` is
+  taken as relative to that directory; an absolute one has to be under it. Anything else is refused.
+- `paperless_upload_document` reads **only** from the directories in `PAPERLESS_UPLOAD_DIRS`, which
+  defaults to just the download directory. Point it at your scans folder to upload from there:
+
+  ```bash
+  PAPERLESS_UPLOAD_DIRS=/home/me/Documents/scans,/home/me/Downloads
+  ```
+
+Both checks resolve symlinks, so a link inside an allowed directory cannot lead out of it, and the
+download directory is created `0700` and rejected outright if it is itself a symlink.
+
+This matters because document text is untrusted input. An archive fed by a scanner or a mail rule
+contains whatever a sender put in it, that text reaches the model, and a model can be talked into
+calling a tool. The confinement is what keeps "read my documents" from becoming "write to my
+`~/.ssh/authorized_keys`" — so widen these two settings deliberately, not by reflex.
 
 If your instance uses a self-signed certificate, run the server with
 `NODE_TLS_REJECT_UNAUTHORIZED=0` — bearing in mind that this disables certificate checking for the
@@ -148,8 +171,8 @@ whole process.
 | --- | --- |
 | `paperless_search_documents` | Full-text search plus structured filters, paginated, with highlights. |
 | `paperless_get_document` | One document: metadata, extracted text, notes, custom field values. |
-| `paperless_download_document` | Write the original / archived PDF / thumbnail to local disk. |
-| `paperless_upload_document` | Upload a local file for consumption, optionally waiting for the result. |
+| `paperless_download_document` | Write the original / archived PDF / thumbnail into `PAPERLESS_DOWNLOAD_DIR`. |
+| `paperless_upload_document` | Upload a file from `PAPERLESS_UPLOAD_DIRS` for consumption, optionally waiting for the result. |
 | `paperless_update_document` | Change title, dates, correspondent, type, tags, custom fields. |
 | `paperless_bulk_edit_documents` | One operation across many documents; `delete` needs confirmation. |
 | `paperless_get_document_suggestions` | What paperless' own matching would file the document as. |
@@ -220,7 +243,8 @@ npm run build      # emit dist/
 
 The end-to-end suite starts a stub HTTP server that mimics the paperless API and drives the real
 server over both transports with raw JSON-RPC, so it covers the wire protocol, query translation,
-multipart uploads, error handling, read-only enforcement, bearer auth and the DNS-rebinding checks.
+multipart uploads, error handling, read-only enforcement, bearer auth, the DNS-rebinding checks and
+the filesystem confinement.
 
 Anything not covered by a dedicated tool is reachable through `paperless_api_request`. Your own
 instance publishes its full, version-matched schema at `<paperless-url>/api/schema/view/`.
