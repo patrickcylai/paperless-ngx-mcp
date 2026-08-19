@@ -278,8 +278,10 @@ export function registerDocumentTools(server: McpServer, deps: Deps): void {
             description:
                 'Save a document’s file to local disk and return the path. Use `kind: "original"` for the file as ' +
                 'uploaded, `"archive"` for the OCR’d PDF paperless generated, `"thumbnail"` for a small preview image. ' +
-                'Read the extracted text with `paperless_get_document` instead when you only need the words.',
-            annotations: { readOnlyHint: true, openWorldHint: true },
+                'Read the extracted text with `paperless_get_document` instead when you only need the words. ' +
+                'Writes are confined to PAPERLESS_DOWNLOAD_DIR.',
+            // Reads from paperless, but writes to the local filesystem — not read-only.
+            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
             inputSchema: z.object({
                 id: z.number().int().describe('Document id.'),
                 kind: z
@@ -289,7 +291,10 @@ export function registerDocumentTools(server: McpServer, deps: Deps): void {
                 dest_path: z
                     .string()
                     .optional()
-                    .describe('Exact file path to write. Defaults to PAPERLESS_DOWNLOAD_DIR with the server-supplied filename.'),
+                    .describe(
+                        'Where to write, as a path inside PAPERLESS_DOWNLOAD_DIR — relative to it, or absolute and ' +
+                            'under it. Anything outside is refused. Defaults to the server-supplied filename.',
+                    ),
                 version: z.number().int().optional().describe('Fetch a specific document version id.'),
             }),
         },
@@ -317,12 +322,18 @@ export function registerDocumentTools(server: McpServer, deps: Deps): void {
         {
             title: 'Upload document',
             description:
-                'Upload a local file into paperless-ngx for consumption (OCR, tagging, filing). Returns the consumption ' +
+                'Upload a local file into paperless-ngx for consumption (OCR, tagging, filing). The file must live in ' +
+                'one of the directories this server is allowed to read (PAPERLESS_UPLOAD_DIRS). Returns the consumption ' +
                 'task id; consumption is asynchronous, so set `wait_seconds` to poll until it finishes and get back the ' +
                 'created document id. Any field left unset is filled in by paperless’ own matching rules.',
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
             inputSchema: z.object({
-                file_path: z.string().describe('Absolute path to the file on this machine.'),
+                file_path: z
+                    .string()
+                    .describe(
+                        'Path to the file on this machine. Must sit inside one of the PAPERLESS_UPLOAD_DIRS ' +
+                            'directories, which defaults to PAPERLESS_DOWNLOAD_DIR.',
+                    ),
                 title: z.string().optional().describe('Title to use instead of one derived from the filename.'),
                 created: z.string().optional().describe('Document date, e.g. `2016-04-19` or `2016-04-19 06:15:00+02:00`.'),
                 correspondent_id: z.number().int().optional(),

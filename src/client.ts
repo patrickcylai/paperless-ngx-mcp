@@ -1,10 +1,10 @@
 import { createWriteStream, openAsBlob } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import type { PaperlessConfig } from './config.ts';
+import { PathError, prepareWriteTarget, resolveReadable, resolveWithin } from './paths.ts';
 
 export type QueryValue = string | number | boolean | null | undefined | Array<string | number>;
 export type Query = Record<string, QueryValue>;
@@ -72,11 +72,49 @@ export function buildQuery(query: Query | undefined): string {
     return encoded ? `?${encoded}` : '';
 }
 
-/** Every paperless API route wants a trailing slash; `path` must not carry a query string. */
+/**
+ * Every paperless API route wants a trailing slash; `path` must not carry a
+ * query string.
+ *
+ * A `..` segment would climb out of `/api/` once the URL is normalised — and on
+ * a sub-path install, out of the base URL entirely — putting the credentials on
+ * requests to endpoints the caller never named. `PaperlessClient.url` re-checks
+ * the assembled URL; this is here to fail early with a message that says why.
+ */
 export function apiPath(rawPath: string): string {
     const trimmed = rawPath.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const rejection = traversalRejection(trimmed);
+    if (rejection) throw new PathError(`${rejection}: ${rawPath}`);
+
     const withApi = /^api(\/|$)/i.test(trimmed) ? trimmed : `api/${trimmed}`;
     return `/${withApi}/`;
+}
+
+/**
+ * Looks past percent-encoding, since the URL parser decodes before it resolves.
+ * Returns why the path is unacceptable, or undefined when it is fine.
+ */
+function traversalRejection(rawPath: string): string | undefined {
+    let current = rawPath;
+    for (let round = 0; round < 3; round += 1) {
+        if (current.split(/[/\\]/).includes('..')) return 'Path may not contain a ".." segment';
+
+        let decoded: string;
+        try {
+            decoded = decodeURIComponent(current);
+        } catch {
+            return 'Path is not valid percent-encoding';
+        }
+        if (decoded === current) return undefined;
+        current = decoded;
+    }
+    return 'Path is encoded too many times to check safely';
+}
+
+/** `.` and `..` are legal basenames but useless as targets, so treat them as no name at all. */
+function safeName(candidate: string): string | undefined {
+    const name = path.basename(candidate);
+    return name === '' || name === '.' || name === '..' ? undefined : name;
 }
 
 export function filenameFromDisposition(disposition: string | null): string | undefined {
@@ -84,13 +122,13 @@ export function filenameFromDisposition(disposition: string | null): string | un
     const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(disposition);
     if (extended) {
         try {
-            return path.basename(decodeURIComponent(extended[1].trim().replace(/^"|"$/g, '')));
+            return safeName(decodeURIComponent(extended[1].trim().replace(/^"|"$/g, '')));
         } catch {
             // Fall through to the plain form below.
         }
     }
     const plain = /filename="?([^";]+)"?/i.exec(disposition);
-    return plain ? path.basename(plain[1].trim()) : undefined;
+    return plain ? safeName(plain[1].trim()) : undefined;
 }
 
 interface RequestOptions {
@@ -117,8 +155,20 @@ export class PaperlessClient {
         if (this.config.readOnly) throw new ReadOnlyError(operation);
     }
 
+    /**
+     * Assembles the request URL and confirms it is still under `<base>/api/`
+     * after the URL parser has normalised it. `apiPath` already rejects `..`,
+     * but checking the parsed result is what actually holds the boundary: it
+     * cannot be talked around by an encoding the parser understands and a
+     * string check does not.
+     */
     url(rawPath: string, query?: Query): string {
-        return `${this.config.baseUrl}${apiPath(rawPath)}${buildQuery(query)}`;
+        const root = new URL(`${this.config.baseUrl}/api/`);
+        const built = new URL(`${this.config.baseUrl}${apiPath(rawPath)}${buildQuery(query)}`);
+        if (built.origin !== root.origin || !built.pathname.startsWith(root.pathname)) {
+            throw new PathError(`Refusing to request ${built.href}: it falls outside ${root.href}.`);
+        }
+        return built.toString();
     }
 
     private headers(options: RequestOptions): Headers {
@@ -206,20 +256,32 @@ export class PaperlessClient {
         return items.slice(0, maxItems);
     }
 
-    /** Streams a binary endpoint (download/preview/thumb) to disk without buffering it in memory. */
+    /**
+     * Streams a binary endpoint (download/preview/thumb) to disk without
+     * buffering it in memory.
+     *
+     * Writes never leave the download directory. The bytes come from the
+     * archive, which is fed by scanners and mail rules, so both the content and
+     * the filename the server suggests are attacker-reachable — an unconfined
+     * destination would turn "fetch this document" into "write this file".
+     */
     async downloadToFile(
         rawPath: string,
         query: Query | undefined,
         destination: { dir?: string; filePath?: string; fallbackName: string },
     ): Promise<{ path: string; bytes: number; contentType: string }> {
+        const root = path.resolve(destination.dir ?? this.config.downloadDir);
+        // Check the caller's destination before spending a request on it.
+        const requested =
+            destination.filePath === undefined ? undefined : resolveWithin(root, destination.filePath, 'dest_path');
+
         const response = await this.fetchRaw('GET', rawPath, { query, accept: '*/*' });
 
         const serverName = filenameFromDisposition(response.headers.get('content-disposition'));
-        const targetPath = destination.filePath
-            ? path.resolve(destination.filePath)
-            : path.join(path.resolve(destination.dir ?? this.config.downloadDir), serverName ?? destination.fallbackName);
-
-        await mkdir(path.dirname(targetPath), { recursive: true });
+        const targetPath = await prepareWriteTarget(
+            root,
+            requested ?? path.join(root, serverName ?? destination.fallbackName),
+        );
 
         if (!response.body) throw new Error(`paperless-ngx returned an empty body for ${this.url(rawPath, query)}`);
 
@@ -246,9 +308,15 @@ export class PaperlessClient {
         };
     }
 
-    /** Builds the multipart body for `/api/documents/post_document/`. */
+    /**
+     * Builds the multipart body for `/api/documents/post_document/`.
+     *
+     * The file has to come from one of the configured upload directories:
+     * whatever is read here leaves the machine, so an unconstrained path is an
+     * exfiltration primitive for anything the process can open.
+     */
     async fileField(filePath: string): Promise<{ form: FormData; filename: string }> {
-        const resolved = path.resolve(filePath);
+        const resolved = await resolveReadable(this.config.uploadDirs, filePath);
         const filename = path.basename(resolved);
         let blob: Blob;
         try {

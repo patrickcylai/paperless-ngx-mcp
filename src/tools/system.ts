@@ -50,6 +50,7 @@ export function registerSystemTools(server: McpServer, deps: Deps): void {
                         requested_api_version: config.apiVersion ?? '(server default)',
                         read_only_mode: config.readOnly,
                         download_dir: config.downloadDir,
+                        upload_dirs: config.uploadDirs,
                         status,
                     }),
                 );

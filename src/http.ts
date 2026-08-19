@@ -14,26 +14,40 @@ import {
 
 import type { TransportConfig } from './config.ts';
 
-/** Node's http server predates the Web `Request`, which is what the MCP handler speaks. */
-async function toWebRequest(incoming: http.IncomingMessage, origin: string): Promise<Request> {
-    const url = new URL(incoming.url ?? '/', origin);
+/** MCP request bodies are small JSON documents; anything larger is not a client we serve. */
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
+class PayloadTooLargeError extends Error {}
+
+function toWebHeaders(incoming: http.IncomingMessage): Headers {
     const headers = new Headers();
     for (const [name, value] of Object.entries(incoming.headers)) {
         if (value === undefined) continue;
         if (Array.isArray(value)) for (const item of value) headers.append(name, item);
         else headers.set(name, value);
     }
+    return headers;
+}
 
+/** Node's http server predates the Web `Request`, which is what the MCP handler speaks. */
+async function toWebRequest(incoming: http.IncomingMessage, url: URL, headers: Headers): Promise<Request> {
     const method = incoming.method ?? 'GET';
     if (method === 'GET' || method === 'HEAD') {
         return new Request(url, { method, headers });
     }
 
-    // MCP request bodies are small JSON documents, so buffering keeps this
-    // simple and sidesteps the half-duplex streaming dance.
+    // Buffering keeps this simple and sidesteps the half-duplex streaming dance,
+    // but it has to be bounded — the alternative is one request costing us all
+    // the memory it cares to send.
     const chunks: Buffer[] = [];
-    for await (const chunk of incoming) chunks.push(chunk as Buffer);
+    let total = 0;
+    for await (const chunk of incoming) {
+        total += (chunk as Buffer).length;
+        if (total > MAX_BODY_BYTES) {
+            throw new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+        }
+        chunks.push(chunk as Buffer);
+    }
 
     return new Request(url, { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
 }
@@ -91,8 +105,8 @@ export async function startHttpServer(
         void (async () => {
             try {
                 const hostHeader = incoming.headers.host ?? `${transport.host}:${transport.port}`;
-                const origin = `http://${hostHeader}`;
-                const pathname = new URL(incoming.url ?? '/', origin).pathname;
+                const url = new URL(incoming.url ?? '/', `http://${hostHeader}`);
+                const pathname = url.pathname;
 
                 // Unauthenticated on purpose: container health checks must not need a token,
                 // and it reports nothing beyond "this process is up".
@@ -112,19 +126,29 @@ export async function startHttpServer(
                     return;
                 }
 
-                const request = await toWebRequest(incoming, origin);
+                const headers = toWebHeaders(incoming);
 
                 // DNS-rebinding and cross-origin protection for a local HTTP endpoint.
+                // Runs on the headers alone, before the body is read, so a request
+                // that is going to be refused never gets to allocate anything.
+                const probe = new Request(url, { method: 'GET', headers });
                 const rejected =
-                    (anyHost ? undefined : hostHeaderValidationResponse(request, allowedHosts)) ??
-                    (anyOrigin ? undefined : originValidationResponse(request, allowedOrigins));
+                    (anyHost ? undefined : hostHeaderValidationResponse(probe, allowedHosts)) ??
+                    (anyOrigin ? undefined : originValidationResponse(probe, allowedOrigins));
                 if (rejected) {
                     await writeWebResponse(rejected, outgoing);
                     return;
                 }
 
+                const request = await toWebRequest(incoming, url, headers);
                 await writeWebResponse(await handler.fetch(request), outgoing);
             } catch (error) {
+                if (error instanceof PayloadTooLargeError) {
+                    log(`request rejected: ${error.message}`);
+                    if (!outgoing.headersSent) sendJson(outgoing, 413, { error: error.message });
+                    else outgoing.end();
+                    return;
+                }
                 const message = error instanceof Error ? error.message : String(error);
                 log(`request failed: ${message}`);
                 if (!outgoing.headersSent) sendJson(outgoing, 500, { error: message });

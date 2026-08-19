@@ -201,6 +201,49 @@ describe('HTTP transport', () => {
         assert.equal(rejected.status, 403);
         assert.match(rejected.body, /Invalid Origin: evil\.example\.com/);
     });
+
+    test('an oversized body is refused rather than buffered', async () => {
+        const response = await fetch(`${server.baseUrl}/mcp`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+            body: 'x'.repeat(5 * 1024 * 1024),
+        });
+        assert.equal(response.status, 413);
+    });
+
+    test('a rejected Host is refused without reading the body', async () => {
+        // The 403 has to arrive while the body is still outstanding: proof the
+        // check runs on the headers, before anything is buffered.
+        const url = new URL(server.baseUrl);
+        const status = await new Promise<number>((resolve, reject) => {
+            const request = http.request(
+                {
+                    hostname: url.hostname,
+                    port: url.port,
+                    path: '/mcp',
+                    method: 'POST',
+                    headers: {
+                        host: 'evil.example.com',
+                        'content-type': 'application/json',
+                        accept: 'application/json, text/event-stream',
+                        // Promise far more than the cap, then send only a byte of it.
+                        'content-length': String(64 * 1024 * 1024),
+                    },
+                },
+                (response) => {
+                    response.resume();
+                    response.on('end', () => resolve(response.statusCode ?? 0));
+                    resolve(response.statusCode ?? 0);
+                },
+            );
+            request.on('error', reject);
+            request.write('{');
+            // The server answers without the rest; drop the half-sent request so
+            // the socket does not outlive the test.
+            request.on('response', () => setImmediate(() => request.destroy()));
+        });
+        assert.equal(status, 403);
+    });
 });
 
 describe('HTTP transport with a bearer token', () => {
