@@ -41,7 +41,7 @@ Nothing to clone or build — `npx` fetches the package on demand.
 ### Claude Code, as a plugin (recommended)
 
 ```bash
-claude plugin marketplace add patrickcylai/paperless-ngx_mcp
+claude plugin marketplace add patrickcylai/paperless-ngx-mcp
 claude plugin install paperless-ngx@patrickcylai-plugins
 ```
 
@@ -97,7 +97,7 @@ npm install
 npm run build
 ```
 
-Then point the client at `node /absolute/path/to/paperless-ngx_mcp/dist/index.js` instead of the
+Then point the client at `node /absolute/path/to/paperless-ngx-mcp/dist/index.js` instead of the
 `npx` command above.
 
 ## Running as an HTTP service

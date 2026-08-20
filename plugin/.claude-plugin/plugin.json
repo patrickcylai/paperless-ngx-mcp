@@ -5,8 +5,8 @@
     "author": {
         "name": "Patrick Lai"
     },
-    "homepage": "https://github.com/patrickcylai/paperless-ngx_mcp#readme",
-    "repository": "https://github.com/patrickcylai/paperless-ngx_mcp",
+    "homepage": "https://github.com/patrickcylai/paperless-ngx-mcp#readme",
+    "repository": "https://github.com/patrickcylai/paperless-ngx-mcp",
     "license": "MIT",
     "userConfig": {
         "url": {

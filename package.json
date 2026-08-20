@@ -16,10 +16,10 @@
     "author": "Patrick Lai",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/patrickcylai/paperless-ngx_mcp.git"
+        "url": "git+https://github.com/patrickcylai/paperless-ngx-mcp.git"
     },
-    "homepage": "https://github.com/patrickcylai/paperless-ngx_mcp#readme",
-    "bugs": "https://github.com/patrickcylai/paperless-ngx_mcp/issues",
+    "homepage": "https://github.com/patrickcylai/paperless-ngx-mcp#readme",
+    "bugs": "https://github.com/patrickcylai/paperless-ngx-mcp/issues",
     "type": "module",
     "bin": {
         "paperless-ngx-mcp": "dist/index.js"
