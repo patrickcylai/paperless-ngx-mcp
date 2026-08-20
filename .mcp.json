@@ -1,8 +1,8 @@
 {
     "mcpServers": {
         "paperless": {
-            "command": "npx",
-            "args": ["-y", "@patrickcylai/paperless-ngx-mcp"],
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"],
             "env": {
                 "PAPERLESS_URL": "${user_config.url}",
                 "PAPERLESS_TOKEN": "${user_config.token}",
