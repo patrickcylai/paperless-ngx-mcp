@@ -16,7 +16,7 @@ import { registerDocumentTools } from './tools/documents.ts';
 import { registerObjectTools } from './tools/objects.ts';
 import { registerSystemTools } from './tools/system.ts';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 function createServer(config: PaperlessConfig): McpServer {
     const client = new PaperlessClient(config);

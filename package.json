@@ -1,6 +1,6 @@
 {
     "name": "@patrickcylai/paperless-ngx-mcp",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Model Context Protocol server for paperless-ngx — search, read, file and upload documents in your archive.",
     "keywords": [
         "mcp",
