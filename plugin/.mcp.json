@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+        "paperless": {
+            "command": "npx",
+            "args": ["-y", "@patrickcylai/paperless-ngx-mcp"],
+            "env": {
+                "PAPERLESS_URL": "${user_config.url}",
+                "PAPERLESS_TOKEN": "${user_config.token}",
+                "PAPERLESS_READ_ONLY": "${user_config.read_only}",
+                "PAPERLESS_DOWNLOAD_DIR": "${user_config.download_dir}",
+                "PAPERLESS_UPLOAD_DIRS": "${user_config.upload_dirs}"
+            }
+        }
+    }
+}

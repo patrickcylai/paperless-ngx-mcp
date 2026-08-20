@@ -38,11 +38,38 @@ next to *API Token*.
 
 Nothing to clone or build — `npx` fetches the package on demand.
 
-### Claude Code
+### Claude Code, as a plugin (recommended)
+
+```bash
+claude plugin marketplace add patrickcylai/paperless-ngx_mcp
+claude plugin install paperless-ngx@patrickcylai-plugins
+```
+
+Claude Code then prompts for your URL and token, and for the two directories described under
+[what it can touch on your disk](#what-it-can-touch-on-your-disk). The token is masked on entry and
+kept in your OS keychain rather than written to a settings file, which is the main reason to prefer
+this over the command below — that one leaves the token in your shell history.
+
+To set everything up front instead of answering prompts:
+
+```bash
+claude plugin install paperless-ngx@patrickcylai-plugins \
+  --config url=https://paperless.example.com \
+  --config token=your-token \
+  --config read_only=true
+```
+
+Change any of it later with `/plugin configure paperless-ngx@patrickcylai-plugins`. Leave
+`download_dir` and `upload_dirs` empty to accept the defaults. The plugin authenticates with a token
+only; for username/password use one of the forms below.
+
+### Claude Code, as a plain MCP server
 
 ```bash
 claude mcp add paperless -e PAPERLESS_URL=https://paperless.example.com -e PAPERLESS_TOKEN=your-token -- npx -y @patrickcylai/paperless-ngx-mcp
 ```
+
+Note that this writes the token into your shell history.
 
 ### Claude Desktop / other MCP clients
 
@@ -248,6 +275,11 @@ the filesystem confinement.
 
 Anything not covered by a dedicated tool is reachable through `paperless_api_request`. Your own
 instance publishes its full, version-matched schema at `<paperless-url>/api/schema/view/`.
+
+The Claude Code plugin lives in [`plugin/`](plugin), and [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)
+makes this repository its own marketplace. The plugin is a thin wrapper: two manifests that declare
+the settings and run the published npm package, so it carries no copy of the server to keep in step.
+Test changes to it with `claude plugin validate ./plugin` and `claude --plugin-dir ./plugin`.
 
 ## License
 

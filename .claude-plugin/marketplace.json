@@ -1,0 +1,21 @@
+{
+    "name": "patrickcylai-plugins",
+    "owner": {
+        "name": "Patrick Lai",
+        "url": "https://github.com/patrickcylai"
+    },
+    "description": "Plugins published from this repository.",
+    "plugins": [
+        {
+            "name": "paperless-ngx",
+            "source": "./plugin",
+            "description": "Search, read, file and upload documents in a paperless-ngx archive.",
+            "version": "0.1.0",
+            "author": {
+                "name": "Patrick Lai"
+            },
+            "category": "productivity",
+            "tags": ["paperless-ngx", "documents", "dms", "ocr", "mcp"]
+        }
+    ]
+}
