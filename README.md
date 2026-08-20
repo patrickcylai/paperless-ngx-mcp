@@ -50,8 +50,7 @@ Claude Code then prompts for your URL and token, and for the two directories des
 kept in your OS keychain rather than written to a settings file, which is the main reason to prefer
 this over the command below — that one leaves the token in your shell history.
 
-The plugin installs the npm package and runs it directly, so there is no `npx` resolution on every
-session and nothing to fetch once it is installed.
+The plugin runs the published npm package, so it needs nothing cloned or built.
 
 To set everything up front instead of answering prompts:
 
@@ -279,19 +278,19 @@ the filesystem confinement.
 Anything not covered by a dedicated tool is reachable through `paperless_api_request`. Your own
 instance publishes its full, version-matched schema at `<paperless-url>/api/schema/view/`.
 
-The published npm package doubles as the Claude Code plugin: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
-declares the settings users are prompted for, [`.mcp.json`](.mcp.json) runs `dist/index.js` out of the
-installed package, and [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) makes this
-repository a marketplace that installs that package from npm. One artifact, so the plugin cannot drift
-from the server.
+The Claude Code plugin lives in [`plugin/`](plugin): [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json)
+declares the settings users are prompted for, and [`plugin/.mcp.json`](plugin/.mcp.json) runs the
+published package. [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) makes this
+repository its own marketplace, listing the plugin by relative path.
 
-Both manifests ship inside the package — check with `npm pack --dry-run` after changing `files`.
-Validate the marketplace with `claude plugin validate .`. To exercise the plugin before publishing,
-point the marketplace entry's `source` at `"."` temporarily and install from the local path.
+That relative path is deliberate. An `npm` plugin source also works, and avoids re-resolving the
+package each session, but only the Claude Code CLI accepts one — the Claude Desktop and claude.ai
+sync paths take `github`, `url`, `git-subdir` or a relative path, and reject a marketplace whose
+entry uses anything else. A relative path is the only form that installs everywhere.
 
-The `.mcp.json` at the repository root exists for the plugin, and `${CLAUDE_PLUGIN_ROOT}` is only set
-when Claude Code loads it as one. Opening this repository as a project may therefore offer a
-`paperless` MCP server that would not start; decline it, and use one of the install methods above.
+Validate both manifests with `claude plugin validate ./plugin` and `claude plugin validate .`. To
+exercise the plugin without publishing, add the repository as a local marketplace:
+`claude plugin marketplace add /path/to/paperless-ngx-mcp`.
 
 ## License
 
