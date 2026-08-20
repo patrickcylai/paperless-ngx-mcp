@@ -4,6 +4,7 @@ import test, { describe } from 'node:test';
 import { apiPath, buildQuery, filenameFromDisposition, PaperlessError } from '../src/client.ts';
 import { ConfigError, loadConfig, normalizeBaseUrl } from '../src/config.ts';
 import { compact, plainHighlights, truncate } from '../src/format.ts';
+import { PathError } from '../src/paths.ts';
 
 describe('normalizeBaseUrl', () => {
     test('adds a scheme to a bare host', () => {
@@ -73,6 +74,22 @@ describe('loadConfig', () => {
         assert.equal(config.requestTimeoutMs, 5000);
     });
 
+    test('confines uploads to the download directory unless told otherwise', () => {
+        const config = loadConfig({ PAPERLESS_URL: 'https://p.example.com', PAPERLESS_TOKEN: 'x' });
+        assert.deepEqual(config.uploadDirs, [config.downloadDir]);
+    });
+
+    test('reads an explicit upload allowlist', () => {
+        const config = loadConfig({
+            PAPERLESS_URL: 'https://p.example.com',
+            PAPERLESS_TOKEN: 'x',
+            PAPERLESS_DOWNLOAD_DIR: '/srv/downloads',
+            PAPERLESS_UPLOAD_DIRS: '/srv/scans, /srv/inbox',
+        });
+        assert.equal(config.downloadDir, '/srv/downloads');
+        assert.deepEqual(config.uploadDirs, ['/srv/scans', '/srv/inbox']);
+    });
+
     test('falls back to a sane timeout when the value is junk', () => {
         const config = loadConfig({
             PAPERLESS_URL: 'https://p.example.com',
@@ -93,6 +110,26 @@ describe('apiPath', () => {
     test('does not double up an existing api prefix', () => {
         assert.equal(apiPath('api/tags'), '/api/tags/');
         assert.equal(apiPath('/api/tags/'), '/api/tags/');
+    });
+
+    test('rejects a traversal segment, which would climb out of /api/', () => {
+        for (const escape of ['../../admin', 'documents/../../admin', 'api/../../x', '..']) {
+            assert.throws(() => apiPath(escape), PathError, escape);
+        }
+    });
+
+    test('sees through percent-encoding, which the URL parser would decode', () => {
+        assert.throws(() => apiPath('%2e%2e/%2e%2e/admin'), PathError);
+        assert.throws(() => apiPath('%252e%252e/admin'), PathError);
+        assert.throws(() => apiPath('..%5cadmin'), PathError);
+    });
+
+    test('refuses malformed encoding rather than guessing at it', () => {
+        assert.throws(() => apiPath('documents/%zz'), /not valid percent-encoding/);
+    });
+
+    test('leaves a legitimate dot in a path alone', () => {
+        assert.equal(apiPath('documents/1.2/history'), '/api/documents/1.2/history/');
     });
 });
 
@@ -120,6 +157,12 @@ describe('filenameFromDisposition', () => {
 
     test('strips any directory component so a server cannot steer the write path', () => {
         assert.equal(filenameFromDisposition('attachment; filename="../../etc/passwd"'), 'passwd');
+    });
+
+    test('treats a bare dot-dot filename as no filename at all', () => {
+        assert.equal(filenameFromDisposition('attachment; filename=".."'), undefined);
+        assert.equal(filenameFromDisposition('attachment; filename="."'), undefined);
+        assert.equal(filenameFromDisposition("attachment; filename*=UTF-8''%2e%2e"), undefined);
     });
 
     test('returns undefined when there is no header', () => {

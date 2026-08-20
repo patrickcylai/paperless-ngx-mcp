@@ -8,8 +8,10 @@ export interface PaperlessConfig {
     authHeader: string;
     /** Value for the `version=` part of the Accept header. Undefined lets the server pick its default. */
     apiVersion?: string;
-    /** Where `download_document` writes files when no destination is given. */
+    /** The only directory `download_document` may write into. */
     downloadDir: string;
+    /** Directories `upload_document` may read from. Defaults to just `downloadDir`. */
+    uploadDirs: string[];
     /** When true, every mutating tool refuses to run. */
     readOnly: boolean;
     requestTimeoutMs: number;
@@ -118,11 +120,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PaperlessConfi
         );
     }
 
+    const downloadDir = path.resolve(env.PAPERLESS_DOWNLOAD_DIR?.trim() || path.join(os.tmpdir(), 'paperless-mcp'));
+    // Uploads read from the local filesystem, so the reachable set is an explicit
+    // allowlist rather than "anywhere the process can read".
+    const uploadDirs = parseList(env.PAPERLESS_UPLOAD_DIRS).map((entry) => path.resolve(entry));
+
     return {
         baseUrl: normalizeBaseUrl(rawUrl),
         authHeader: buildAuthHeader(env),
         apiVersion: env.PAPERLESS_API_VERSION?.trim() || undefined,
-        downloadDir: env.PAPERLESS_DOWNLOAD_DIR?.trim() || path.join(os.tmpdir(), 'paperless-mcp'),
+        downloadDir,
+        uploadDirs: uploadDirs.length ? uploadDirs : [downloadDir],
         readOnly: parseBool(env.PAPERLESS_READ_ONLY, false),
         requestTimeoutMs: parseIntOr(env.PAPERLESS_TIMEOUT_MS, 30_000),
     };
