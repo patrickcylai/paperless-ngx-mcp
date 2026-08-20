@@ -8,10 +8,7 @@
     "plugins": [
         {
             "name": "paperless-ngx",
-            "source": {
-                "source": "npm",
-                "package": "@patrickcylai/paperless-ngx-mcp"
-            },
+            "source": "./plugin",
             "description": "Search, read, file and upload documents in a paperless-ngx archive.",
             "version": "0.2.0",
             "author": {
