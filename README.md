@@ -38,11 +38,41 @@ next to *API Token*.
 
 Nothing to clone or build — `npx` fetches the package on demand.
 
-### Claude Code
+### Claude Code, as a plugin (recommended)
+
+```bash
+claude plugin marketplace add patrickcylai/paperless-ngx-mcp
+claude plugin install paperless-ngx@patrickcylai-plugins
+```
+
+Claude Code then prompts for your URL and token, and for the two directories described under
+[what it can touch on your disk](#what-it-can-touch-on-your-disk). The token is masked on entry and
+kept in your OS keychain rather than written to a settings file, which is the main reason to prefer
+this over the command below — that one leaves the token in your shell history.
+
+The plugin installs the npm package and runs it directly, so there is no `npx` resolution on every
+session and nothing to fetch once it is installed.
+
+To set everything up front instead of answering prompts:
+
+```bash
+claude plugin install paperless-ngx@patrickcylai-plugins \
+  --config url=https://paperless.example.com \
+  --config token=your-token \
+  --config read_only=true
+```
+
+Change any of it later with `/plugin configure paperless-ngx@patrickcylai-plugins`. Leave
+`download_dir` and `upload_dirs` empty to accept the defaults. The plugin authenticates with a token
+only; for username/password use one of the forms below.
+
+### Claude Code, as a plain MCP server
 
 ```bash
 claude mcp add paperless -e PAPERLESS_URL=https://paperless.example.com -e PAPERLESS_TOKEN=your-token -- npx -y @patrickcylai/paperless-ngx-mcp
 ```
+
+Note that this writes the token into your shell history.
 
 ### Claude Desktop / other MCP clients
 
@@ -70,7 +100,7 @@ npm install
 npm run build
 ```
 
-Then point the client at `node /absolute/path/to/paperless-ngx_mcp/dist/index.js` instead of the
+Then point the client at `node /absolute/path/to/paperless-ngx-mcp/dist/index.js` instead of the
 `npx` command above.
 
 ## Running as an HTTP service
@@ -248,6 +278,20 @@ the filesystem confinement.
 
 Anything not covered by a dedicated tool is reachable through `paperless_api_request`. Your own
 instance publishes its full, version-matched schema at `<paperless-url>/api/schema/view/`.
+
+The published npm package doubles as the Claude Code plugin: [`.claude-plugin/plugin.json`](.claude-plugin/plugin.json)
+declares the settings users are prompted for, [`.mcp.json`](.mcp.json) runs `dist/index.js` out of the
+installed package, and [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) makes this
+repository a marketplace that installs that package from npm. One artifact, so the plugin cannot drift
+from the server.
+
+Both manifests ship inside the package — check with `npm pack --dry-run` after changing `files`.
+Validate the marketplace with `claude plugin validate .`. To exercise the plugin before publishing,
+point the marketplace entry's `source` at `"."` temporarily and install from the local path.
+
+The `.mcp.json` at the repository root exists for the plugin, and `${CLAUDE_PLUGIN_ROOT}` is only set
+when Claude Code loads it as one. Opening this repository as a project may therefore offer a
+`paperless` MCP server that would not start; decline it, and use one of the install methods above.
 
 ## License
 

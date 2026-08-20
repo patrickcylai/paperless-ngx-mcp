@@ -1,0 +1,44 @@
+{
+    "name": "paperless-ngx",
+    "description": "Search, read, file and upload documents in a paperless-ngx archive.",
+    "version": "0.1.0",
+    "author": {
+        "name": "Patrick Lai"
+    },
+    "homepage": "https://github.com/patrickcylai/paperless-ngx-mcp#readme",
+    "repository": "https://github.com/patrickcylai/paperless-ngx-mcp",
+    "license": "MIT",
+    "userConfig": {
+        "url": {
+            "type": "string",
+            "title": "Paperless URL",
+            "description": "Base URL of your paperless-ngx install, e.g. https://paperless.example.com. A trailing /api is stripped, so either form works.",
+            "required": true
+        },
+        "token": {
+            "type": "string",
+            "title": "API token",
+            "description": "Paperless web UI -> user menu -> My Profile -> the circular arrow next to API Token.",
+            "sensitive": true,
+            "required": true
+        },
+        "read_only": {
+            "type": "boolean",
+            "title": "Read-only mode",
+            "description": "Refuse every tool that would modify the archive. Downloads still write files, inside the download directory below.",
+            "default": false
+        },
+        "download_dir": {
+            "type": "directory",
+            "title": "Download directory",
+            "description": "The only directory downloads may be written into. Leave empty for a private directory under your system temp folder.",
+            "default": ""
+        },
+        "upload_dirs": {
+            "type": "string",
+            "title": "Upload directories",
+            "description": "Comma-separated directories uploads may read from, e.g. ~/Documents/scans. Leave empty to allow only the download directory.",
+            "default": ""
+        }
+    }
+}
