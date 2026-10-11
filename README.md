@@ -92,6 +92,24 @@ Add to the client's MCP config (`claude_desktop_config.json` for Claude Desktop)
 }
 ```
 
+If the server fails to start with `spawn npx ENOENT` (or `env: node: No such file or directory`),
+the client cannot find Node on its `PATH`. This is common when Node comes from a version manager such
+as nvm, fnm or Volta, since a GUI app launched from the Dock or Finder does not run your shell profile.
+Give the absolute path to `npx` — `which npx` prints it — and put the same directory on the server's
+`PATH` so that `npx` can find `node` in turn:
+
+```json
+"command": "/Users/me/.nvm/versions/node/v24.19.0/bin/npx",
+"args": ["-y", "@patrickcylai/paperless-ngx-mcp"],
+"env": {
+    "PATH": "/Users/me/.nvm/versions/node/v24.19.0/bin:/usr/bin:/bin",
+    …
+}
+```
+
+That path names one Node version, so update it if you uninstall that version. Recent Claude Desktop
+builds pick up your login shell's `PATH` themselves, so you may not need this at all.
+
 ### From source
 
 ```bash
